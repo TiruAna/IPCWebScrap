@@ -44,15 +44,19 @@ scroll_inf <- function(drv){
 
 ##############################################################################################################################
 ####################################################### Navigation ###########################################################
+  
+  firefoxProxyProfile <- makeFirefoxProfile(list(
+    "network.proxy.ssl" = "proxy.insro.local", 
+    "network.proxy.ssl_port" = 8080L,
+    "network.proxy.type" = 1L
+  ))
 
-  # driver<- rsDriver(browser=c("firefox"))
-  # rmdSel <- driver[["client"]]
-  # rmdSel$open()
-  # rmdSel$navigate("https://www.cora.ro")
   
   rmdSel <- remoteDriver(remoteServerAddr = "127.0.0.1",
                          port = 4444L,
-                         browserName = "firefox")
+                         browserName = "firefox", 
+                         extraCapabilities = firefoxProxyProfile)  
+
 
   prod_links <- list()
   
@@ -73,9 +77,68 @@ scroll_inf <- function(drv){
   
   
   
-  
+  cols <- unique(unlist(prod_links))    
   ##############################################################################################################################
   ####################################################### Extraction ###########################################################
+  
+  cl <- makeCluster(3) 
+  registerDoParallel(cl)
+  
+  clusterEvalQ(cl,{
+    library(RSelenium)
+    library(rvest)
+    library(xml2)
+    firefoxProxyProfile <- makeFirefoxProfile(list(
+      "network.proxy.ssl" = "proxy.insro.local", 
+      "network.proxy.ssl_port" = 8080L,
+      "network.proxy.type" = 1L
+    ))
+    rmdSel <- remoteDriver(remoteServerAddr = "127.0.0.1",
+                           port = 4444L,
+                           browserName = "firefox", 
+                           extraCapabilities = firefoxProxyProfile) 
+  })
+  
+  resp <- foreach(x=1:length(prod_links)) %dopar%{
+    rmdSel$open()
+    rmdSel$navigate(prod_links[x])
+    nume <- extractAttr(rmdSel$getPageSource()[[1]], mag_list[[1]]$extraction$nume, "href")
+    pret <- extractAttr(rmdSel$getPageSource()[[1]], mag_list[[1]]$extraction$pret, "href")
+    #pret_cant <- extractAttr(rmdSel$getPageSource()[[1]], mag_list[[1]]$extraction$pret_cant)
+    if(is.na(mag_list[[1]]$extraction$categorie)){
+      #  categorie <-   
+    } else{
+      categorie <- extractAttr(rmdSel$getPageSource()[[1]], mag_list[[1]]$extraction$categorie, "href")
+    }
+    descriere <- extractAttr(rmdSel$getPageSource()[[1]], mag_list[[1]]$extraction$descriere, "href")
+    data_extragere <- Sys.Date()
+    magazin <- mag_list[[1]]$nume
+    date_extrase <- list(nume = nume, 
+                         pret = pret, 
+                         #pret_cant = pret_cant, 
+                         categorie = categorie, 
+                         descriere = descriere, 
+                         data_extragere = data_extragere, 
+                         magazin = magazin)
+    rmdSel$close()
+  }
+  
+  clusterEvalQ(cl, {
+    rmdSel$close()
+  })
+  
+  
+  stopImplicitCluster()
+  
+  resp <- unlist(resp, recursive = FALSE)
+  
+  
+  
+  
+  
+  
+  
+  
     library(RSelenium)
     library(rvest)
     library(xml2)
